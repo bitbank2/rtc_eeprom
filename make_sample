@@ -1,0 +1,13 @@
+CFLAGS=-c -Wall -O2
+LIBS = -lm -lrtc -lpthread
+
+all: rtctest
+
+rtctest: main.o
+	$(CC) main.o $(LIBS) -o rtctest
+
+main.o: main.c
+	$(CC) $(CFLAGS) main.c
+
+clean:
+	rm *.o rtctest
