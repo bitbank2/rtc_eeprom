@@ -43,7 +43,7 @@ time_t tt;
 		printf("EEPROM failed to initialize\n");
 	}
 	tt = time(NULL);  // get the current time
-	thetime = gmtime(&tt);
+	thetime = localtime(&tt);
 
 // Take the command line action
 	if (strcmp(argv[1], "getsys") == 0) // display the system time
