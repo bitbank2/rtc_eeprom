@@ -10,60 +10,64 @@
 #include <time.h>
 #include "rtc.h"
 
-static unsigned char ucTestPattern[32] = {0,31,1,30,2,29,3,28,4,27,5,26,6,25,7,24,
-8,23,9,22,10,21,11,20,12,19,13,18,14,17,15,16};
+void ShowHelp(void)
+{
+	printf("RTC library demo program\n\n");
+	printf("Usage: ./rtc_test <command>\n");
+	printf("Available commands:\n\n");
+	printf("getsys -  Display the current system time\n");
+	printf("getchip - Display the current DS3231 time\n");
+	printf("setchip - Write the system time to the DS3231\n");
+} /* ShowHelp() */
 
 int main(int argc, char *argv[])
 {
 int i;
-struct tm *thetime;
+struct tm *thetime, mytime;
 time_t tt;
 
-	tt = time(NULL);  // get the current time
-	thetime = gmtime(&tt);
-
-
+	if (argc != 2)
+	{
+		ShowHelp();
+		return 0;
+	}
 	i = rtcInit(0, 0x68); // open the I2C bus for the RTC
 	if (i != 1)
 	{
+		printf("DS3231 failed to initialize\n");
 		return -1; // problem - quit
 	}
 	i = eeInit(0, 0x57); // open the I2C bus for the EERPOM
 	if (i != 1)
 	{
-		return -1;
+		printf("EEPROM failed to initialize\n");
 	}
+	tt = time(NULL);  // get the current time
+	thetime = gmtime(&tt);
 
-//	rtcSetTime(thetime); // set the current time
-
-	eeWriteBlock(1024, ucTestPattern); // write our 32-byte test pattern
-	usleep(20000); // give it time to finish the write
-	for (i=0; i<20; i++)
+// Take the command line action
+	if (strcmp(argv[1], "getsys") == 0) // display the system time
 	{
-		rtcGetTime(thetime);
-		printf("Current time = %02d:%02d:%02d\n", thetime->tm_hour, thetime->tm_min, thetime->tm_sec);
-		printf("Current date = %02d/%02d/%04d\n", thetime->tm_mon+1, thetime->tm_mday, thetime->tm_year + 1900);
-		usleep(500000);
+		printf("Time+Date read from the system clock\n");
 	}
+	else if (strcmp(argv[1], "getchip") == 0) // display the chip time
+	{
+		rtcGetTime(&mytime);
+		thetime = &mytime;
+		printf("Time+Date read from the DS3231\n");
+	}
+	else if (strcmp(argv[1], "setchip") == 0) // set chip time
+	{
+		rtcSetTime(thetime);
+		printf("Time+Date written to the DS3231\n");
+	}
+	printf("Time: %02d:%02d:%02d\n", thetime->tm_hour, thetime->tm_min, thetime->tm_sec);
+	printf("Date: %02d/%02d/%04d\n", thetime->tm_mon+1, thetime->tm_mday, thetime->tm_year + 1900);
+
 	// Display the temperature
 	i = rtcGetTemp();
-	printf("Temperature = %2.1fC\n", (float)i / 4);
-	// read back the test pattern and see if it worked
-	{
-	unsigned char ucTemp[32];
-		for (i=0; i<32; i++) // read back the data block 1 byte at a time
-		{
-			if (i==0)
-				eeReadByte(1024, ucTemp); // read first byte
-			else
-				eeReadByte(-1, &ucTemp[i]); // read the rest
-//		printf("byte %d = %02x\n", i, ucTemp[i]);
-		}
-		if (memcmp(ucTemp, ucTestPattern, 32) == 0)
-			printf("EEPROM works!\n");
-		else
-			printf("EEPROM failed!\n");
-	}
+	printf("DS3231 Temperature = %2.1fC\n", (float)i / 4);
+
 	rtcShutdown(); // close the file handles
 
 return 0;
