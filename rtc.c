@@ -1,23 +1,10 @@
 //
-// DS3231 and AT24C32
+// DS3231 and xxx
 // Real Time Clock + EEPROM library
 //
 // Written by Larry Bank - 1/5/2018
 // Copyright (c) 2018 BitBank Software, Inc.
 // bitbank@pobox.com
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include <unistd.h>
 #include <stdio.h>
@@ -27,12 +14,12 @@
 #include <time.h>
 #include <sys/ioctl.h>
 #include <linux/i2c-dev.h>
+#include "rtc.h"
 
 static int rtc_i2c = -1;
 static int ee_i2c = -1;
 //
 // Opens a file system handle to the EEPROM I2C device
-// success = 1, failure = 0
 //
 int eeInit(int iChannel, int iAddr)
 {
@@ -42,7 +29,7 @@ char filename[32];
 	if ((ee_i2c = open(filename, O_RDWR)) < 0)
 	{
 		fprintf(stderr, "Failed to open the i2c bus; need to run as root?\n");
-		return 0;
+		return -1;
 	}
 
 	if (ioctl(ee_i2c, I2C_SLAVE, iAddr) < 0)
@@ -50,28 +37,18 @@ char filename[32];
 		close(ee_i2c);
 		fprintf(stderr, "Failed to acquire bus access or talk to slave\n");
 		ee_i2c = -1;
-		return 0;
+		return -1;
 	}
-	return 1;
+	return 0;
 } /* eeInit() */
 
-//
-// Read a single byte from the current or given address
-// and increment the internal address
-// Pass -1 as the address to use the current
-// returns 1 for success, 0 for failure
-//
 int eeReadByte(int iAddr, unsigned char *pData)
 {
 unsigned char ucTemp[4];
 int rc;
 
-	if (ee_i2c < 0) return 0; // not initialized
-
 	if (iAddr != -1) // send the address
 	{
-		if (iAddr & 0x1f) // must be on a page boundary
-			return 0;
 		ucTemp[0] = (unsigned char)(iAddr >> 8);
 		ucTemp[1] = (unsigned char)iAddr;
 		rc = write(ee_i2c, ucTemp, 2);
@@ -84,19 +61,14 @@ int rc;
 //
 // Read a block of 32 bytes at the given address
 // or from the last read address if iAddr == -1
-// returns 1 for success, 0 for failure
 //
 int eeReadBlock(int iAddr, unsigned char *pData)
 {
 unsigned char ucTemp[4];
 int rc;
 
-	if (ee_i2c < 0) return 0; // not initialized
-
 	if (iAddr != -1) // send the address
 	{
-		if (iAddr & 0x1f) // must be on a block boundary
-			return 0;
 		ucTemp[0] = (unsigned char)(iAddr >> 8);
 		ucTemp[1] = (unsigned char)iAddr;
 		rc = write(ee_i2c, ucTemp, 2);
@@ -105,17 +77,10 @@ int rc;
 	return (rc == 32);
 } /* eeReadBlock() */
 
-//
-// Write a single byte to the given address or to the
-// last address. Auto-increments the internal address
-// Success = 1, failure = 0
-//
 int eeWriteByte(int iAddr, unsigned char ucByte)
 {
 unsigned char ucTemp[4];
 int rc;
-
-	if (ee_i2c < 0) return 0; // not initialized
 
 	if (iAddr != -1) // send the address
 	{
@@ -134,22 +99,13 @@ int rc;
 	}
 } /* eeWriteByte() */
 
-//
-// Write a block of 32-bytes. Must be on a block boundary
-// Pass a starting address or -1 to use the last address
-// Success = 1, failure = 0
-//
 int eeWriteBlock(int iAddr, unsigned char *pData)
 {
 unsigned char ucTemp[34];
 int rc;
 
-	if (ee_i2c < 0) return 0; // not initialized
-
 	if (iAddr != -1) // send the address
 	{
-		if (iAddr & 0x1f) // not a block boundary
-			return 0;
 		ucTemp[0] = (unsigned char)(iAddr >> 8);
 		ucTemp[1] = (unsigned char)iAddr;
 		memcpy(&ucTemp[2], pData, 32);
@@ -164,22 +120,18 @@ int rc;
 } /* eeWriteBlock() */
 
 //
-// Closes all file system handles (rtc + eeprom)
+// Closes all file system handles
 //
 void rtcShutdown(void)
 {
 	if (rtc_i2c >= 0) close(rtc_i2c);
 	if (ee_i2c >= 0) close(ee_i2c);
-	rtc_i2c = ee_i2c = -1;
-
 } /* rtcShutdown() */
 //
 // Opens a file system handle to the RTC I2C device
-// success = 1, failure = 0
 //
 int rtcInit(int iChannel, int iAddr)
 {
-int rc;
 char filename[32];
 unsigned char ucTemp[2];
  
@@ -187,7 +139,7 @@ unsigned char ucTemp[2];
 	if ((rtc_i2c = open(filename, O_RDWR)) < 0)
 	{
 		fprintf(stderr, "Failed to open the i2c bus; need to run as root?\n");
-		return 0;
+		return -1;
 	}
 
 	if (ioctl(rtc_i2c, I2C_SLAVE, iAddr) < 0)
@@ -195,32 +147,32 @@ unsigned char ucTemp[2];
 		close(rtc_i2c);
 		fprintf(stderr, "Failed to acquire bus access or talk to slave\n");
 		rtc_i2c = -1;
-		return 0;
+		return -1;
 	}
 	ucTemp[0] = 0xe; // control register
-	rc = write(rtc_i2c, ucTemp, 1);
-	rc = read(rtc_i2c, &ucTemp[1], 1); // read contents
+	write(rtc_i2c, ucTemp, 1);
+	read(rtc_i2c, &ucTemp[1], 1); // read contents
 	ucTemp[1] &= ~64; // turn off square wave on battery
 	ucTemp[1] &= ~4; // enable time on battery
-	rc = write(rtc_i2c, ucTemp, 2); // write it back
-	return (rc == 2);
+	write(rtc_i2c, ucTemp, 2); // write it back
+//	ucTemp[0] = 0xf; // control register
+//	ucTemp[1] = 0; // turn on oscillator and turn off alarms
+//	write(rtc_i2c, ucTemp, 2);
+	return 0;
 
 } /* rtcInit() */
 
 //
 // Read the current internal temperature
-// Value in celcius * 4 (resolution of 0.25C)
-// Accurate to +/-3C
+// Value is celcius * 4 (resolution of 0.25C)
 //
 int rtcGetTemp(void)
 {
 unsigned char ucTemp[2];
 int rc, iTemp = 0;
 
-	if (rtc_i2c < 0) return 0; // not initialized
-
 	ucTemp[0] = 0x11; // MSB location
-	rc = write(rtc_i2c, ucTemp, 1);
+	write(rtc_i2c, ucTemp, 1);
 	rc = read(rtc_i2c, ucTemp, 2);
 	if (rc == 2)
 	{
@@ -233,15 +185,11 @@ int rc, iTemp = 0;
 
 //
 // Set the current time/date
-// success = 1, failure = 0
 //
 int rtcSetTime(struct tm *pTime)
 {
 unsigned char ucTemp[20];
-int i, rc;
-
-	if (rtc_i2c < 0) return 0; // not initialized
-
+int i;
 	ucTemp[0] = 0; // start at register 0
 	// seconds
 	ucTemp[1] = ((pTime->tm_sec / 10) << 4);
@@ -267,27 +215,24 @@ int i, rc;
 	ucTemp[7] = (((pTime->tm_year % 100)/10) << 4);
 	ucTemp[7] |= (pTime->tm_year % 10);
 
-	rc = write(rtc_i2c, ucTemp, 8);
-	return (rc == 8);
+	write(rtc_i2c, ucTemp, 8);
+	return 0;
 } /* rtcSetTime() */
 
 //
 // Read the current time/date
-// success = 1, failure = 0
 //
 int rtcGetTime(struct tm *pTime)
 {
 unsigned char ucTemp[20];
 int i,rc;
 
-	if (rtc_i2c < 0) return 0; // not initialized
-
 	ucTemp[0] = 0; // start of data registers we want
 	rc = write(rtc_i2c, ucTemp, 1); // write address of register to read
 	i = read(rtc_i2c, ucTemp, 7);
 	if (rc < 0 || i != 7)
 	{
-		return 0; // something went wrong
+		return -1; // something went wrong
 	}
 	memset(pTime, 0, sizeof(struct tm));
 	// convert numbers from BCD
@@ -312,6 +257,93 @@ int i,rc;
 	pTime->tm_year = (ucTemp[5] >> 7) * 100; // century
 	pTime->tm_year += ((ucTemp[6] >> 4) * 10) + (ucTemp[6] & 0xf);
 
-	return 1;
+	return 0;
 
 } /* rtcGetTime() */
+//
+// Set Alarm for:
+// ALARM_SECOND = Once every second
+// ALARM_MINUTE = Once every minute
+// ALARM_TIME = When a specific hour:second match
+// ALARM_DAY = When a specific day of the week and time match
+// ALARM_DATE = When a specific day of the month and time match
+//
+void rtcSetAlarm(uint8_t type, struct tm *pTime)
+{
+unsigned char ucTemp[8];
+
+  switch (type)
+  {
+    case ALARM_SECOND: // turn on repeating alarm for every second
+      ucTemp[0] = 0xe; // control register
+      ucTemp[1] = 0x1d; // enable alarm1 interrupt
+      write(rtc_i2c, ucTemp, 2);
+      ucTemp[0] = 0x7; // starting register for alarm 1
+      ucTemp[1] = 0x80; // set bit 7 in the 4 registers to tell it a repeating alarm
+      ucTemp[2] = 0x80;
+      ucTemp[3] = 0x80;
+      ucTemp[4] = 0x80;
+      write(rtc_i2c, ucTemp, 5);
+      break;
+    case ALARM_MINUTE: // turn on repeating alarm for every minute
+      ucTemp[0] = 0xe; // control register
+      ucTemp[1] = 0x1e; // enable alarm2 interrupt
+      write(rtc_i2c, ucTemp, 2);
+      ucTemp[0] = 0xb; // starting register for alarm 2
+      ucTemp[1] = 0x80; // set bit 7 in the 3 registers to tell it a repeating alarm
+      ucTemp[2] = 0x80;
+      ucTemp[3] = 0x80;
+      write(rtc_i2c, ucTemp, 4);
+      break;
+    case ALARM_TIME: // turn on alarm to match a specific time
+    case ALARM_DAY: // turn on alarm for a specific day of the week
+    case ALARM_DATE: // turn on alarm for a specific date
+      ucTemp[0] = 0xe; // control register
+      ucTemp[1] = 0x1d; // enable alarm1 interrupt
+      write(rtc_i2c, ucTemp, 2);
+// Values are stored as BCD
+      ucTemp[0] = 0x7; // start at register 7
+      // seconds
+      ucTemp[1] = ((pTime->tm_sec / 10) << 4);
+      ucTemp[1] |= (pTime->tm_sec % 10);
+      // minutes
+      ucTemp[2] = ((pTime->tm_min / 10) << 4);
+      ucTemp[2] |= (pTime->tm_min % 10);
+      // hours (and set 24-hour format)
+      ucTemp[3] = ((pTime->tm_hour / 10) << 4);
+      ucTemp[3] |= (pTime->tm_hour % 10);
+      // day of the week
+      ucTemp[4] = pTime->tm_wday + 1;
+      // day of the month
+      ucTemp[5] = (pTime->tm_mday / 10) << 4;
+      ucTemp[5] |= (pTime->tm_mday % 10);
+      // set the A1Mx bits (high bits of the 4 registers)
+      // for the specific type of alarm
+      if (type == ALARM_TIME) // A1Mx bits should be x1100
+      {
+        ucTemp[1] |= 0x80;
+        ucTemp[2] |= 0x80;
+      }
+      else if (type == ALARM_DAY) // A1Mx bits should be 10000
+      {
+        ucTemp[4] |= 0x40; // DY/DT bit
+      }
+      // for matching the date, all bits are left as 0's (00000)
+      write(rtc_i2c, ucTemp, 6);
+      break;
+  } // switch on type
+} /* rtcSetAlarm() */
+
+//
+// Reset the "fired" bits for Alarm 1 and 2
+// Interrupts will not occur until these bits are cleared
+//
+void rtcClearAlarms(void)
+{
+unsigned char ucTemp[2];
+
+  ucTemp[0] = 0xf; // control register
+  ucTemp[1] = 0x0; // clear A1F & A2F (alarm 1 or 2 fired) bit to allow it to fire again
+  write(rtc_i2c, ucTemp, 2);
+} /* rtcClearAlarms() */
+

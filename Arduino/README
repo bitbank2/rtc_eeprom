@@ -1,0 +1,7 @@
+A simple library to use those low cost RTC/EEPROM boards
+
+Installation:
+------------
+1) Download the library: https://github.com/bitbank2/rtc_eeprom/archive/master.zip
+2) (In the Arduino IDE) Sketch > Include Library > Add .ZIP Library > select the downloaded file > Open
+
