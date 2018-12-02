@@ -9,12 +9,21 @@
 // Time structure
 // modeled after Linux version
 //
+#ifndef _TIME_H_
 struct tm
 {
-  uint8_t tm_sec, tm_min, tm_hour;
-  uint8_t tm_wday, tm_mday, tm_mon;
-  uint8_t tm_year;
+  int tm_sec;
+  int tm_min;
+  int tm_hour;
+  int tm_mday;
+  int tm_mon;
+  int tm_year;
+  int tm_wday;
+  int tm_yday;
+  int tm_isdst;
 };
+#endif
+
 // Alarm types
 enum {
   ALARM_SECOND=0,
@@ -25,8 +34,9 @@ enum {
 };
 //
 // Turn on the RTC
+// returns 1 for success, 0 for failure
 //
-void rtcInit(void);
+int rtcInit(void);
 //
 // Set Alarm for:
 // ALARM_SECOND = Once every second

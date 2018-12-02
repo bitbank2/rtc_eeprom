@@ -3,11 +3,12 @@
 #include <rtc_eeprom.h>
 
 // Wrapper function to write I2C data on Arduino
-static void I2CWrite(int iAddr, unsigned char *pData, int iLen)
+// returns 1 for success, 0 for failure
+static int I2CWrite(int iAddr, unsigned char *pData, int iLen)
 {
   Wire.beginTransmission(iAddr);
   Wire.write(pData, iLen);
-  Wire.endTransmission();
+  return (Wire.endTransmission() == 0);
 } /* I2CWrite() */
 
 // Wrapper function to read I2C data on Arduino
@@ -101,14 +102,15 @@ unsigned char ucTemp[34];
 } /* eeWriteBlock() */
 //
 // Turn on the RTC
+// returns 1 for success, 0 for failure
 //
-void rtcInit(void)
+int rtcInit(void)
 {
 uint8_t ucTemp[2];
 
   ucTemp[0] = 0xe; // control register
   ucTemp[1] = 0x1c; // enable main oscillator and interrupt mode for alarms
-  I2CWrite(RTC_ADDR, ucTemp, 2);
+  return I2CWrite(RTC_ADDR, ucTemp, 2);
 }
 //
 // Set Alarm for:
