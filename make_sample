@@ -1,13 +1,13 @@
 CFLAGS=-c -Wall -O2
 LIBS = -lm -lrtc -lpthread
 
-all: rtctest
+all: getset_time
 
-rtctest: main.o
-	$(CC) main.o $(LIBS) -o rtctest
+getset_time: main.o
+	$(CC) main.o $(LIBS) -o getset_time
 
 main.o: main.c
 	$(CC) $(CFLAGS) main.c
 
 clean:
-	rm *.o rtctest
+	rm *.o getset_time
