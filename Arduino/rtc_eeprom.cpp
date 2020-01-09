@@ -1,29 +1,31 @@
+//
+// rtc_eeprom
+//
+// Copyright (c) 2019 BitBank Software, Inc.
+// Written by Larry Bank
+// bitbank@pobox.com
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include <Arduino.h>
+#ifndef __AVR_ATtiny85__
 #include <Wire.h>
+#endif
+#include <BitBang_I2C.h>
 #include <rtc_eeprom.h>
 
-// Wrapper function to write I2C data on Arduino
-// returns 1 for success, 0 for failure
-static int I2CWrite(int iAddr, unsigned char *pData, int iLen)
-{
-  Wire.beginTransmission(iAddr);
-  Wire.write(pData, iLen);
-  return (Wire.endTransmission() == 0);
-} /* I2CWrite() */
-
-// Wrapper function to read I2C data on Arduino
-static void I2CRead(int iAddr, unsigned char *pData, int iLen)
-{
-int x;
-
-  Wire.requestFrom(iAddr, iLen);
-  x = 0;
-  while (x < iLen && Wire.available())
-  {
-    pData[x] = Wire.read();
-    x++;
-  }
-} /* I2CRead() */
 //
 // Read a byte from the EEPROM
 //
@@ -104,10 +106,11 @@ unsigned char ucTemp[34];
 // Turn on the RTC
 // returns 1 for success, 0 for failure
 //
-int rtcInit(void)
+int rtcInit(int iSDA, int iSCL)
 {
 uint8_t ucTemp[2];
 
+  I2CInit(iSDA, iSCL, 100000L); // initialize the bit bang library
   ucTemp[0] = 0xe; // control register
   ucTemp[1] = 0x1c; // enable main oscillator and interrupt mode for alarms
   return I2CWrite(RTC_ADDR, ucTemp, 2);
@@ -194,9 +197,7 @@ int rtcGetTemp(void)
 unsigned char ucTemp[2];
 int iTemp = 0;
 
-  ucTemp[0] = 0x11; // MSB location
-  I2CWrite(RTC_ADDR, ucTemp, 1);
-  I2CRead(RTC_ADDR, ucTemp, 2);
+  I2CReadRegister(RTC_ADDR, 0x11, ucTemp, 2); // MSB location
   iTemp = ucTemp[0] << 8; // high byte
   iTemp |= ucTemp[1]; // low byte
   iTemp >>= 6; // lower 2 bits are fraction; upper 8 bits = integer part
@@ -231,7 +232,7 @@ uint8_t i;
         ucTemp[6] = (i / 10) << 4;
         ucTemp[6] |= (i % 10);
         if (pTime->tm_year >= 100)
-                ucTemp[6] |= 0x80; // century bit
+           ucTemp[6] |= 0x80; // century bit
         // year
         ucTemp[7] = (((pTime->tm_year % 100)/10) << 4);
         ucTemp[7] |= (pTime->tm_year % 10);
@@ -246,9 +247,7 @@ void rtcGetTime(struct tm *pTime)
 {
 unsigned char ucTemp[20];
 
-        ucTemp[0] = 0; // start of data registers we want
-        I2CWrite(RTC_ADDR, ucTemp, 1); // write address of register to read
-        I2CRead(RTC_ADDR, ucTemp, 7);
+        I2CReadRegister(RTC_ADDR, 0, ucTemp, 7); // start of data registers
         memset(pTime, 0, sizeof(struct tm));
         // convert numbers from BCD
         pTime->tm_sec = ((ucTemp[0] >> 4) * 10) + (ucTemp[0] & 0xf);

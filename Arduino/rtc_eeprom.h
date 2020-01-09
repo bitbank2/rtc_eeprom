@@ -36,7 +36,7 @@ enum {
 // Turn on the RTC
 // returns 1 for success, 0 for failure
 //
-int rtcInit(void);
+int rtcInit(int iSDAPin, int iSCLPin);
 //
 // Set Alarm for:
 // ALARM_SECOND = Once every second
