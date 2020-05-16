@@ -2,8 +2,18 @@
 #define __RTC_EEPROM__
 
 // I2C base address of the DS3231 RTC and AT24C32 EEPROM
-#define RTC_ADDR 0x68
+#define RTC_DS3231_ADDR 0x68
 #define EEPROM_ADDR 0x57
+
+#define RTC_PCF8563_ADDR 0x51
+
+enum
+{
+  RTC_UNKNOWN=0,
+  RTC_PCF8563,
+  RTC_DS3231,
+  RTC_COUNT
+};
 
 //
 // Time structure
@@ -36,7 +46,7 @@ enum {
 // Turn on the RTC
 // returns 1 for success, 0 for failure
 //
-int rtcInit(int iSDAPin, int iSCLPin);
+int rtcInit(int iType, int iSDAPin, int iSCLPin, int bWire);
 //
 // Set Alarm for:
 // ALARM_SECOND = Once every second
