@@ -149,6 +149,13 @@ unsigned char ucTemp[2];
 		rtc_i2c = -1;
 		return -1;
 	}
+	ucTemp[0] = 0x11; // 8 MSBs of temperature
+	write(rtc_i2c, ucTemp, 1);
+	ucTemp[1] = 0;
+	read(rtc_i2c, &ucTemp[1], 1);
+	if (ucTemp[1] == 0) { // error reading; device is not connected
+            return -1;
+	}
 	ucTemp[0] = 0xe; // control register
 	write(rtc_i2c, ucTemp, 1);
 	read(rtc_i2c, &ucTemp[1], 1); // read contents
