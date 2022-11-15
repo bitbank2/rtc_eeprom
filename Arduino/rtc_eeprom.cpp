@@ -114,7 +114,7 @@ int rtcInit(int iType, int iSDA, int iSCL, int bWire)
 {
 uint8_t ucTemp[4];
 
-  if (iType <= RTC_UNKNOWN || iType >= RTC_COUNT) // invalid type
+  if (iType <= RTC_UNKNOWN || iType >= RTC_TYPE_COUNT) // invalid type
      return 0;
   iRTCType = iType;
   if (iRTCType == RTC_DS3231)
@@ -184,6 +184,7 @@ uint8_t ucTemp[8];
       case ALARM_DATE: // turn on alarm for a specific date
         ucTemp[0] = 0xe; // control register
         ucTemp[1] = 0x1d; // enable alarm1 interrupt
+        ucTemp[2] = 0x00; // reset alarm status bits
         I2CWrite(&bb, iRTCAddr, ucTemp, 2);
 // Values are stored as BCD
         ucTemp[0] = 0x7; // start at register 7
@@ -197,23 +198,23 @@ uint8_t ucTemp[8];
         ucTemp[3] = ((pTime->tm_hour / 10) << 4);
         ucTemp[3] |= (pTime->tm_hour % 10);
         // day of the week
-        ucTemp[4] = pTime->tm_wday + 1;
+        //ucTemp[4] = pTime->tm_wday + 1;
         // day of the month
-        ucTemp[5] = (pTime->tm_mday / 10) << 4;
-        ucTemp[5] |= (pTime->tm_mday % 10);
+        ucTemp[4] = (pTime->tm_mday / 10) << 4;
+        ucTemp[4] |= (pTime->tm_mday % 10);
         // set the A1Mx bits (high bits of the 4 registers)
         // for the specific type of alarm
         if (type == ALARM_TIME) // A1Mx bits should be x1100
         {
-          ucTemp[1] |= 0x80;
-          ucTemp[2] |= 0x80;
+          ucTemp[3] |= 0x80;
+          ucTemp[4] |= 0x80;
         }
         else if (type == ALARM_DAY) // A1Mx bits should be 10000
         {
           ucTemp[4] |= 0x40; // DY/DT bit
         }
         // for matching the date, all bits are left as 0's (00000)
-        I2CWrite(&bb, iRTCAddr, ucTemp, 6);
+        I2CWrite(&bb, iRTCAddr, ucTemp, 5);
         break;
      } // switch on type
   }

@@ -12,7 +12,7 @@ enum
   RTC_UNKNOWN=0,
   RTC_PCF8563,
   RTC_DS3231,
-  RTC_COUNT
+  RTC_TYPE_COUNT
 };
 
 //
