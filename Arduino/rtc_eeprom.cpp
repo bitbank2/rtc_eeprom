@@ -119,6 +119,8 @@ uint8_t ucTemp[4];
   iRTCType = iType;
   if (iRTCType == RTC_DS3231)
      iRTCAddr = RTC_DS3231_ADDR;
+  else if (iRTCType == RTC_RV3032)
+     iRTCAddr = RTC_RV3032_ADDR;
   else
      iRTCAddr = RTC_PCF8563_ADDR;
 
@@ -127,14 +129,13 @@ uint8_t ucTemp[4];
   bb.iSCL = iSCL;
   bb.bWire = bWire;
   I2CInit(&bb, 100000L); // initialize the bit bang library
-  if (iType == RTC_DS3231)
-  {
+  if (iType == RTC_DS3231) {
     ucTemp[0] = 0xe; // control register
     ucTemp[1] = 0x1c; // enable main oscillator and interrupt mode for alarms
     I2CWrite(&bb, iRTCAddr, ucTemp, 2);
-  }
-  else // PCF8563
-  {
+  } else if (iType == RTC_RV3032) {
+    // nothing to do
+  } else { // PCF8563
     ucTemp[0] = 0; // control_status_1
     ucTemp[1] = 0; // normal mode, clock on, power-on-reset disabled
     ucTemp[2] = 0; // disable all alarms
@@ -142,6 +143,33 @@ uint8_t ucTemp[4];
   }
   return 1;
 }
+//
+// Get the UNIX epoch time
+// (only available on the RV-3032-C7
+//
+uint32_t rtcGetEpoch(void)
+{
+uint32_t tt = 0;
+
+   if (iRTCType != RTC_RV3032)
+      return tt;
+   I2CRead(&bb, iRTCAddr, 0x1b, (uint8_t *)&tt, sizeof(tt)); 
+   return tt;
+} /* rtcGetEpoch() */
+//
+// Set the UNIX epoch time
+// (only available on the RV-3032-C7
+//
+void rtcSetEpoch(uint32_t tt)
+{
+uint8_t ucTemp[4];
+
+  I2CRead(&bb, iRTCAddr, 0x10, ucTemp, 1); // read control register 2
+  ucTemp[0] |= 1; // set RESET BIT
+  I2CWrite(&bb, iRTCAddr, 0x10, ucTemp, 1); // do a reset of seconds and prescaler
+  I2CWrite(&bb, iRTCAddr, 0x1b, (uint8_t *)&tt, sizeof(tt)); // set time
+} /* rtcSetEpoch() */
+
 //
 // Set Alarm for:
 // ALARM_SECOND = Once every second
@@ -182,10 +210,6 @@ uint8_t ucTemp[8];
       case ALARM_TIME: // turn on alarm to match a specific time
       case ALARM_DAY: // turn on alarm for a specific day of the week
       case ALARM_DATE: // turn on alarm for a specific date
-        ucTemp[0] = 0xe; // control register
-        ucTemp[1] = 0x1d; // enable alarm1 interrupt
-        ucTemp[2] = 0x00; // reset alarm status bits
-        I2CWrite(&bb, iRTCAddr, ucTemp, 2);
 // Values are stored as BCD
         ucTemp[0] = 0x7; // start at register 7
         // seconds
@@ -198,23 +222,36 @@ uint8_t ucTemp[8];
         ucTemp[3] = ((pTime->tm_hour / 10) << 4);
         ucTemp[3] |= (pTime->tm_hour % 10);
         // day of the week
-        //ucTemp[4] = pTime->tm_wday + 1;
+        if (type == ALARM_DAY)
+           ucTemp[4] = pTime->tm_wday + 1;
         // day of the month
-        ucTemp[4] = (pTime->tm_mday / 10) << 4;
-        ucTemp[4] |= (pTime->tm_mday % 10);
+        else if (type == ALARM_DATE) {
+          ucTemp[4] = (pTime->tm_mday / 10) << 4;
+          ucTemp[4] |= (pTime->tm_mday % 10);
+        } else {
+          ucTemp[4] = 0;
+        }
         // set the A1Mx bits (high bits of the 4 registers)
         // for the specific type of alarm
-        if (type == ALARM_TIME) // A1Mx bits should be x1100
+        ucTemp[1] &= 0x7f; // make sure A1M1 & A1M2 are set to 0
+        ucTemp[2] &= 0x7f;
+        if (type == ALARM_TIME) // A1Mx bits should be x1000
         {
-          ucTemp[3] |= 0x80;
+          ucTemp[3] &= 0x7f;
           ucTemp[4] |= 0x80;
         }
         else if (type == ALARM_DAY) // A1Mx bits should be 10000
         {
+          ucTemp[3] &= 0x7f;
+          ucTemp[4] &= 0x7f;
           ucTemp[4] |= 0x40; // DY/DT bit
         }
         // for matching the date, all bits are left as 0's (00000)
         I2CWrite(&bb, iRTCAddr, ucTemp, 5);
+        ucTemp[0] = 0xe; // control register
+        ucTemp[1] = 0x5; // enable alarm1 interrupt
+        ucTemp[2] = 0x00; // reset alarm status bits
+        I2CWrite(&bb, iRTCAddr, ucTemp, 3);
         break;
      } // switch on type
   }
@@ -297,15 +334,17 @@ int rtcGetTemp(void)
 unsigned char ucTemp[2];
 int iTemp = 0;
 
-  if (iRTCType == RTC_DS3231)
-  {
+  if (iRTCType == RTC_DS3231) {
     I2CReadRegister(&bb, iRTCAddr, 0x11, ucTemp, 2); // MSB location
     iTemp = ucTemp[0] << 8; // high byte
     iTemp |= ucTemp[1]; // low byte
     iTemp >>= 6; // lower 2 bits are fraction; upper 8 bits = integer part
-    return iTemp;
+  } else if (iRTCType == RTC_RV3032) {
+    I2CReadRegister(&bb, iRTCAddr, 0x0e, ucTemp, 2); // LSB, then MSB
+    iTemp = ucTemp[0] | (ucTemp[1] << 8);
+    iTemp >>= 6; // lower 2 bits are fraction upper 8 are integer
   }
-  return 0; // no temperature sensor
+  return iTemp; // no temperature sensor
 } /* rtcGetTemp() */
 //
 // Set the current time/date
@@ -315,8 +354,7 @@ void rtcSetTime(struct tm *pTime)
 unsigned char ucTemp[20];
 uint8_t i;
 
-   if (iRTCType == RTC_DS3231)
-   {
+   if (iRTCType == RTC_DS3231) {
 // Values are stored as BCD
         ucTemp[0] = 0; // start at register 0
         // seconds
@@ -342,9 +380,7 @@ uint8_t i;
         // year
         ucTemp[7] = (((pTime->tm_year % 100)/10) << 4);
         ucTemp[7] |= (pTime->tm_year % 10);
-    }
-    else if (iRTCType == RTC_PCF8563)
-    {
+    } else if (iRTCType == RTC_PCF8563) {
         ucTemp[0] = 2; // start at register 2
         // seconds
         ucTemp[1] = ((pTime->tm_sec / 10) << 4);
@@ -369,6 +405,30 @@ uint8_t i;
         // year
         ucTemp[7] = (((pTime->tm_year % 100)/10) << 4);
         ucTemp[7] |= (pTime->tm_year % 10);
+    } else if (iRTCType == RTC_RV3032) {
+// Values are stored as BCD
+        ucTemp[0] = 1; // start at register 1
+        // seconds
+        ucTemp[1] = ((pTime->tm_sec / 10) << 4);
+        ucTemp[1] |= (pTime->tm_sec % 10);
+        // minutes
+        ucTemp[2] = ((pTime->tm_min / 10) << 4);
+        ucTemp[2] |= (pTime->tm_min % 10);
+        // hours
+        ucTemp[3] = ((pTime->tm_hour / 10) << 4);
+        ucTemp[3] |= (pTime->tm_hour % 10);
+        // day of the week
+        ucTemp[4] = pTime->tm_wday + 1;
+        // day of the month
+        ucTemp[5] = (pTime->tm_mday / 10) << 4;
+        ucTemp[5] |= (pTime->tm_mday % 10);
+        // month
+        i = pTime->tm_mon+1; // 1-12 on the RTC
+        ucTemp[6] = (i / 10) << 4;
+        ucTemp[6] |= (i % 10);
+        // year
+        ucTemp[7] = (((pTime->tm_year % 100)/10) << 4);
+        ucTemp[7] |= (pTime->tm_year % 10);
     }
     I2CWrite(&bb, iRTCAddr, ucTemp, 8);
 
@@ -381,8 +441,7 @@ void rtcGetTime(struct tm *pTime)
 {
 unsigned char ucTemp[20];
 
-  if (iRTCType == RTC_DS3231)
-  {
+  if (iRTCType == RTC_DS3231) {
         I2CReadRegister(&bb, iRTCAddr, 0, ucTemp, 7); // start of data registers
         memset(pTime, 0, sizeof(struct tm));
         // convert numbers from BCD
@@ -406,9 +465,7 @@ unsigned char ucTemp[20];
         pTime->tm_mon = (((ucTemp[5] >> 4) & 1) * 10 + (ucTemp[5] & 0xf)) -1; // 0-11
         pTime->tm_year = (ucTemp[5] >> 7) * 100; // century
         pTime->tm_year += ((ucTemp[6] >> 4) * 10) + (ucTemp[6] & 0xf);
-  }
-  else if (iRTCType == RTC_PCF8563)
-  {
+  } else if (iRTCType == RTC_PCF8563) {
         I2CReadRegister(&bb, iRTCAddr, 2, ucTemp, 7); // start of data registers
         memset(pTime, 0, sizeof(struct tm));
         // convert numbers from BCD
@@ -423,6 +480,19 @@ unsigned char ucTemp[20];
         pTime->tm_mon = (((ucTemp[5] >> 4) & 1) * 10 + (ucTemp[5] & 0xf)) -1; // 0-11
         pTime->tm_year = (ucTemp[5] >> 7) * 100; // century
         pTime->tm_year += ((ucTemp[6] >> 4) * 10) + (ucTemp[6] & 0xf);
+  } else if (iRTCType == RTC_RV3032) {
+        I2CReadRegister(&bb, iRTCAddr, 0x01, ucTemp, 7); // start of data registers
+        memset(pTime, 0, sizeof(struct tm));
+        // convert numbers from BCD
+        pTime->tm_sec = ((ucTemp[0] >> 4) * 10) + (ucTemp[0] & 0xf);
+        pTime->tm_min = ((ucTemp[1] >> 4) * 10) + (ucTemp[1] & 0xf);
+        pTime->tm_hour = ((ucTemp[2] >> 4) * 10) + (ucTemp[2] & 0xf);
+        pTime->tm_wday = ucTemp[3] - 1; // day of the week (0-6)
+        // day of the month
+        pTime->tm_mday = ((ucTemp[4] >> 4) * 10) + (ucTemp[4] & 0xf);
+        // month
+        pTime->tm_mon = (((ucTemp[5] >> 4) & 1) * 10 + (ucTemp[5] & 0xf)) -1; // 0-11     
+        pTime->tm_year = 100 + ((ucTemp[6] >> 4) * 10) + (ucTemp[6] & 0xf);
   }
 } /* rtcGetTime() */
 //
@@ -431,18 +501,20 @@ unsigned char ucTemp[20];
 //
 void rtcClearAlarms(void)
 {
-uint8_t ucTemp[2];
+uint8_t ucTemp[4];
 
   if (iRTCType == RTC_DS3231)
   {
-    ucTemp[0] = 0xf; // control register
-    ucTemp[1] = 0x0; // clear A1F & A2F (alarm 1 or 2 fired) bit to allow it to fire again
+    ucTemp[0] = 0xe; // control register
+    ucTemp[1] = 0x4; // disable alarm interrupt bits
+    ucTemp[2] = 0x0; // clear A1F & A2F (alarm 1 or 2 fired) bit to allow it to fire again
+    I2CWrite(&bb, iRTCAddr, ucTemp, 3);
   }
   else if (iRTCType == RTC_PCF8563)
   {
     ucTemp[0] = 1; // control_status_2
     ucTemp[1] = 0; // disable all alarms
+    I2CWrite(&bb, iRTCAddr, ucTemp, 2);
   }
-  I2CWrite(&bb, iRTCAddr, ucTemp, 2);
 } /* rtcClearAlarms() */
 

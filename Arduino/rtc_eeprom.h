@@ -4,7 +4,7 @@
 // I2C base address of the DS3231 RTC and AT24C32 EEPROM
 #define RTC_DS3231_ADDR 0x68
 #define EEPROM_ADDR 0x57
-
+#define RTC_RV3032_ADDR 0x52
 #define RTC_PCF8563_ADDR 0x51
 
 enum
@@ -12,6 +12,7 @@ enum
   RTC_UNKNOWN=0,
   RTC_PCF8563,
   RTC_DS3231,
+  RTC_RV3032,
   RTC_TYPE_COUNT
 };
 
@@ -75,6 +76,16 @@ void rtcGetTime(struct tm *pTime);
 // This function clears the "fired" flags for both Alarm 1 and 2
 //
 void rtcClearAlarms(void);
+//
+// Get the UNIX epoch time
+// (only available on the RV-3032-C7
+//
+uint32_t rtcGetEpoch();
+//
+// Set the UNIX epoch time
+// (only available on the RV-3032-C7
+//
+void rtcSetEpoch(uint32_t tt);
 //
 // Write a byte to the given address
 // or the previous address if iAddr == -1
