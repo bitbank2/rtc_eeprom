@@ -4,7 +4,7 @@
 // I2C base address of the DS3231 RTC and AT24C32 EEPROM
 #define RTC_DS3231_ADDR 0x68
 #define EEPROM_ADDR 0x57
-#define RTC_RV3032_ADDR 0x52
+#define RTC_RV3032_ADDR 0x51
 #define RTC_PCF8563_ADDR 0x51
 
 enum
@@ -48,6 +48,10 @@ enum {
 // returns 1 for success, 0 for failure
 //
 int rtcInit(int iType, int iSDAPin, int iSCLPin, int bWire);
+//
+// Enable/Set the CLKOUT frequency (-1 = disable)
+//
+void rtcSetFreq(int iFreq);
 //
 // Set Alarm for:
 // ALARM_SECOND = Once every second

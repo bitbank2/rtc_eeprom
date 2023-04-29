@@ -134,7 +134,10 @@ uint8_t ucTemp[4];
     ucTemp[1] = 0x1c; // enable main oscillator and interrupt mode for alarms
     I2CWrite(&bb, iRTCAddr, ucTemp, 2);
   } else if (iType == RTC_RV3032) {
-    // nothing to do
+    // Enable direct switchover mode to the backup battery (disabled on delivery)
+    ucTemp[0] = 0xc0; // EEPROM PMU
+    ucTemp[1] = 0x10; // enable direct VBACKUP switchover, disable trickle charge
+    I2CWrite(&bb, iRTCAddr, ucTemp, 2); 
   } else { // PCF8563
     ucTemp[0] = 0; // control_status_1
     ucTemp[1] = 0; // normal mode, clock on, power-on-reset disabled
@@ -142,7 +145,61 @@ uint8_t ucTemp[4];
     I2CWrite(&bb, iRTCAddr, ucTemp, 3);
   }
   return 1;
-}
+} /* rtcInit() */
+//
+// Enable/set the CLKOUT frequency (-1 = disable)
+//
+void rtcSetFreq(int iFreq)
+{
+uint8_t c, ucTemp[4];
+int i;
+
+   if (iRTCType == RTC_RV3032) {
+      if (iFreq == -1) { // disable it
+          I2CRead(&bb, 0xc0, &ucTemp[1], 1); // read control register
+          ucTemp[0] = 0xc0; // write it back with NCLKE set to disable CLKOUT
+          ucTemp[1] |= 0x40; // set NCLKE
+          I2CWrite(&bb, iRTCAddr, ucTemp, 2);
+      } else { // enable clock
+          I2CRead(&bb, 0xc0, &ucTemp[1], 1); // read control register
+          ucTemp[0] = 0xc0; // write it back with NCLKE set to disable CLKOUT
+          ucTemp[1] &= ~0x40; // clear NCLKE
+          I2CWrite(&bb, iRTCAddr, ucTemp, 2);
+          c = 0; // default = 32768
+          if (iFreq <= 32768) { // low speed
+             ucTemp[0] = 0xc3; // CLKOUT control
+             if (iFreq == 1024) c = 1;
+             else if (iFreq == 64) c = 2;
+             else if (iFreq == 1) c = 3; // all other values will stay at 32k
+             ucTemp[1] = c << 5; // bits 5+6 in 32k mode
+             I2CWrite(&bb, iRTCAddr, ucTemp, 2);
+          } else { // high speed
+             ucTemp[0] = 0xc2; // HFD + CLKOUT control
+             i = (iFreq / 8192000) - 1;
+             if (i < 0) i = 0;
+             else if (i > 8191) i = 8191; // top 13 bits of freq up to 67Mhz
+             ucTemp[1] = (uint8_t)(i & 0xff);
+             ucTemp[2] = (uint8_t)(0x80 | ((i >> 8) & 0x1f));
+             I2CWrite(&bb, iRTCAddr, ucTemp, 3);
+          }
+      }
+   } else if (iRTCType == RTC_DS3231) {
+       if (iFreq == -1) { // disable CLKOUT (allow interrupts)
+          ucTemp[0] = 0xe;// control register
+          ucTemp[1] = 0x4; // disable SQW and enable interrupts 
+       } else { // enable CLKOUT (disable interrupts)
+          ucTemp[0] = 0xe;
+          c = 3; // assume 8192Hz (default
+          if (iFreq == 1) c = 0;
+          else if (iFreq == 1024) c = 1;
+          else if (iFreq == 4096) c = 2;
+          else if (iFreq == 8192) c = 3;
+          ucTemp[1] = 0x40 | (c << 3); // enable SQW, disable interrupts
+       }
+       I2CWrite(&bb, iRTCAddr, ucTemp, 2);
+   } else if (iRTCType == RTC_PCF8563) {
+   }
+} /* rtcSetFreq() */
 //
 // Get the UNIX epoch time
 // (only available on the RV-3032-C7
@@ -153,7 +210,7 @@ uint32_t tt = 0;
 
    if (iRTCType != RTC_RV3032)
       return tt;
-   I2CRead(&bb, iRTCAddr, 0x1b, (uint8_t *)&tt, sizeof(tt)); 
+   I2CRead(&bb, 0x1b, (uint8_t *)&tt, sizeof(tt)); 
    return tt;
 } /* rtcGetEpoch() */
 //
@@ -164,10 +221,10 @@ void rtcSetEpoch(uint32_t tt)
 {
 uint8_t ucTemp[4];
 
-  I2CRead(&bb, iRTCAddr, 0x10, ucTemp, 1); // read control register 2
+  I2CRead(&bb, 0x10, ucTemp, 1); // read control register 2
   ucTemp[0] |= 1; // set RESET BIT
-  I2CWrite(&bb, iRTCAddr, 0x10, ucTemp, 1); // do a reset of seconds and prescaler
-  I2CWrite(&bb, iRTCAddr, 0x1b, (uint8_t *)&tt, sizeof(tt)); // set time
+  I2CWrite(&bb, 0x10, ucTemp, 1); // do a reset of seconds and prescaler
+  I2CWrite(&bb, 0x1b, (uint8_t *)&tt, sizeof(tt)); // set time
 } /* rtcSetEpoch() */
 
 //
